@@ -23,7 +23,7 @@ app.get('/api/roles', async (req, res) => {
   }
 });
 
-// --- NUEVA RUTA PARA EXPEDIENTES (Mascotas + Propietarios) ---
+// --- RUTA GET PARA EXPEDIENTES (Mascotas + Propietarios) ---
 app.get('/api/expedientes', async (req, res) => {
   try {
     const query = `
@@ -45,6 +45,50 @@ app.get('/api/expedientes', async (req, res) => {
   } catch (err) {
     console.error('Error al obtener expedientes:', err.message);
     res.status(500).send('Error en el servidor al obtener expedientes');
+  }
+});
+
+// --- NUEVA RUTA POST PARA GUARDAR EXPEDIENTES ---
+app.post('/api/expedientes', async (req, res) => {
+  const { mascota, especie, raza, propietario, telefono } = req.body;
+
+  try {
+    // 1. Verificar si el propietario ya existe por nombre o teléfono
+    let propietarioQuery = 'SELECT id_propietario FROM propietarios WHERE nombres = $1 OR telefono = $2';
+    let propietarioRes = await db.query(propietarioQuery, [propietario, telefono || 'N/D']);
+
+    let idPropietario;
+
+    if (propietarioRes.rows.length > 0) {
+      idPropietario = propietarioRes.rows[0].id_propietario;
+    } else {
+      // Si no existe, lo creamos automáticamente cumpliendo con las restricciones de la BD
+      const insertPropietario = `
+        INSERT INTO propietarios (nombres, apellidos, cedula, telefono, direccion) 
+        VALUES ($1, $2, $3, $4, $5) RETURNING id_propietario;
+      `;
+      const cedulaTemporal = 'TEMP-' + Date.now().toString().slice(-8);
+      const resProp = await db.query(insertPropietario, [propietario, 'Registrado Web', cedulaTemporal, telefono || '0000-0000', 'No especificada']);
+      idPropietario = resProp.rows[0].id_propietario;
+    }
+
+    // 2. Generar código de expediente único
+    const codigoExpediente = 'EXP-' + Math.floor(1000 + Math.random() * 9000);
+
+    // 3. Insertar la mascota vinculada al propietario
+    const insertMascota = `
+      INSERT INTO mascotas (id_propietario, codigo_expediente, nombre_mascota, especie, raza) 
+      VALUES ($1, $2, $3, $4, $5) 
+      RETURNING *;
+    `;
+    const valoresMascota = [idPropietario, codigoExpediente, mascota, especie, raza || 'Mestizo'];
+    const nuevaMascotaRes = await db.query(insertMascota, valoresMascota);
+
+    res.status(201).json(nuevaMascotaRes.rows[0]);
+
+  } catch (err) {
+    console.error('Error al guardar el expediente:', err.message);
+    res.status(500).send('Error en el servidor al registrar el expediente');
   }
 });
 
