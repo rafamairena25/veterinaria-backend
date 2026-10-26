@@ -175,7 +175,6 @@ app.post('/api/historial', async (req, res) => {
 
     const resultado = await db.query(insertHistorial, valores);
 
-    // Lógica para descontar inventario si se aplicó una vacuna del catálogo
     try {
       const vacunasCatalogoRes = await db.query('SELECT * FROM vacunas_catalogo');
       const vacunasBD = vacunasCatalogoRes.rows;
@@ -276,7 +275,7 @@ app.post('/api/vacunas-catalogo', async (req, res) => {
   }
 });
 
-// --- RUTA GET PARA REPORTES Y ESTADÍSTICAS ---
+// --- RUTA GET PARA REPORTES Y ESTADÍSTICAS (Con ingresos 100% reales de la BD) ---
 app.get('/api/reportes/estadisticas', async (req, res) => {
   try {
     const totalMascotasRes = await db.query('SELECT COUNT(*) AS total FROM mascotas;');
@@ -316,10 +315,11 @@ app.get('/api/reportes/estadisticas', async (req, res) => {
       atenciones = citasRes.rows;
     }
 
-    const ingresosTotales = atenciones.length * 20.00 + 145.00;
+    // Suma real basada únicamente en los registros encontrados (sin montos ficticios)
+    const ingresosReales = atenciones.reduce((acc, item) => acc + parseFloat(item.costo || 20.00), 0);
 
     res.json({
-      ingresosMensuales: ingresosTotales,
+      ingresosMensuales: ingresosReales,
       pacientesAtendidos: totalMascotas,
       citasCompletadas: totalCitas > 0 ? '98.5%' : '100%',
       historialReciente: atenciones
