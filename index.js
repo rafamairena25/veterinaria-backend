@@ -48,17 +48,15 @@ app.get('/api/expedientes', async (req, res) => {
   }
 });
 
-// --- RUTA POST PARA GUARDAR EXPEDIENTES (Con división inteligente de Nombre y Apellido) ---
+// --- RUTA POST PARA GUARDAR EXPEDIENTES ---
 app.post('/api/expedientes', async (req, res) => {
   const { mascota, especie, raza, propietario, telefono } = req.body;
 
   try {
-    // 1. Separar inteligentemente el nombre y el apellido ingresados en el formulario
     const partesNombre = propietario ? propietario.trim().split(' ') : ['Propietario', 'Web'];
     const nombres = partesNombre[0] || 'Desconocido';
     const apellidos = partesNombre.slice(1).join(' ') || 'Registrado Web';
 
-    // 2. Verificar si el propietario ya existe por nombre o teléfono
     let propietarioQuery = 'SELECT id_propietario FROM propietarios WHERE nombres = $1 OR telefono = $2';
     let propietarioRes = await db.query(propietarioQuery, [nombres, telefono || 'N/D']);
 
@@ -67,7 +65,6 @@ app.post('/api/expedientes', async (req, res) => {
     if (propietarioRes.rows.length > 0) {
       idPropietario = propietarioRes.rows[0].id_propietario;
     } else {
-      // Si no existe, lo creamos guardando el nombre y apellido separados correctamente
       const insertPropietario = `
         INSERT INTO propietarios (nombres, apellidos, cedula, telefono, direccion) 
         VALUES ($1, $2, $3, $4, $5) RETURNING id_propietario;
@@ -77,10 +74,8 @@ app.post('/api/expedientes', async (req, res) => {
       idPropietario = resProp.rows[0].id_propietario;
     }
 
-    // 3. Generar código de expediente único
     const codigoExpediente = 'EXP-' + Math.floor(1000 + Math.random() * 9000);
 
-    // 4. Insertar la mascota vinculada al propietario
     const insertMascota = `
       INSERT INTO mascotas (id_propietario, codigo_expediente, nombre_mascota, especie, raza) 
       VALUES ($1, $2, $3, $4, $5) 
@@ -121,12 +116,11 @@ app.get('/api/citas', async (req, res) => {
   }
 });
 
-// --- RUTA POST PARA AGENDAR CITAS (Con validación anti-choques) ---
+// --- RUTA POST PARA AGENDAR CITAS ---
 app.post('/api/citas', async (req, res) => {
   const { id_mascota, fecha_cita, motivo_servicio } = req.body;
 
   try {
-    // 1. Validar si ya existe una cita en exactamente la misma fecha y hora para evitar cruces
     const validarChoque = `
       SELECT id_cita FROM citas 
       WHERE fecha_cita = $1 AND estado != 'Cancelada';
@@ -137,7 +131,6 @@ app.post('/api/citas', async (req, res) => {
       return res.status(400).json({ error: 'Ya existe una cita programada en este horario. Por favor elija otro.' });
     }
 
-    // 2. Insertar la nueva cita si el horario está libre
     const insertCita = `
       INSERT INTO citas (id_mascota, fecha_cita, motivo_servicio, estado) 
       VALUES ($1, $2, $3, 'Programada') 
@@ -153,15 +146,13 @@ app.post('/api/citas', async (req, res) => {
   }
 });
 
-// --- RUTA POST PARA GUARDAR HISTORIAL MÉDICO / ORDEN DE ATENCIÓN (CU-03) ---
+// --- RUTA POST PARA GUARDAR HISTORIAL MÉDICO ---
 app.post('/api/historial', async (req, res) => {
   const { id_mascota, constantes_vitales, motivo_consulta, diagnostico, tratamiento_recetado } = req.body;
 
   try {
-    // Buscamos un id_veterinario válido en la base de datos
     const vetQuery = 'SELECT id_usuario FROM usuarios LIMIT 1';
     const vetRes = await db.query(vetQuery);
-    
     const id_veterinario = vetRes.rows.length > 0 ? vetRes.rows[0].id_usuario : 1;
 
     const insertHistorial = `
@@ -211,6 +202,52 @@ app.get('/api/historial/:id_mascota', async (req, res) => {
   } catch (err) {
     console.error('Error al obtener el historial médico:', err.message);
     res.status(500).send('Error en el servidor al obtener el historial');
+  }
+});
+
+// --- RUTAS NUEVAS PARA CATÁLOGOS (CUN-04) ---
+
+app.get('/api/servicios', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM servicios ORDER BY id_servicio ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error al obtener servicios:', err.message);
+    res.status(500).send('Error en el servidor al obtener servicios');
+  }
+});
+
+app.post('/api/servicios', async (req, res) => {
+  const { nombre_servicio, precio } = req.body;
+  try {
+    const query = 'INSERT INTO servicios (nombre_servicio, precio, estado) VALUES ($1, $2, $3) RETURNING *;';
+    const result = await db.query(query, [nombre_servicio, precio, 'Activo']);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error al crear servicio:', err.message);
+    res.status(500).send('Error en el servidor al crear servicio');
+  }
+});
+
+app.get('/api/vacunas-catalogo', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM vacunas_catalogo ORDER BY id_vacuna ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error al obtener vacunas:', err.message);
+    res.status(500).send('Error en el servidor al obtener vacunas');
+  }
+});
+
+app.post('/api/vacunas-catalogo', async (req, res) => {
+  const { nombre_vacuna, stock_o_dosis } = req.body;
+  try {
+    const query = 'INSERT INTO vacunas_catalogo (nombre_vacuna, stock_o_dosis) VALUES ($1, $2) RETURNING *;';
+    const result = await db.query(query, [nombre_vacuna, stock_o_dosis || 'Disponible']);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error al crear vacuna:', err.message);
+    res.status(500).send('Error en el servidor al crear vacuna');
   }
 });
 
