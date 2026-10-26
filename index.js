@@ -97,6 +97,62 @@ app.post('/api/expedientes', async (req, res) => {
   }
 });
 
+// --- RUTA GET PARA OBTENER CITAS ---
+app.get('/api/citas', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        c.id_cita,
+        m.id_mascota,
+        m.nombre_mascota AS mascota,
+        m.especie,
+        c.fecha_cita,
+        c.motivo_servicio,
+        c.estado
+      FROM citas c
+      JOIN mascotas m ON c.id_mascota = m.id_mascota
+      ORDER BY c.fecha_cita ASC;
+    `;
+    const result = await db.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error al obtener citas:', err.message);
+    res.status(500).send('Error en el servidor al obtener citas');
+  }
+});
+
+// --- RUTA POST PARA AGENDAR CITAS (Con validación anti-choques) ---
+app.post('/api/citas', async (req, res) => {
+  const { id_mascota, fecha_cita, motivo_servicio } = req.body;
+
+  try {
+    // 1. Validar si ya existe una cita en exactamente la misma fecha y hora para evitar cruces
+    const validarChoque = `
+      SELECT id_cita FROM citas 
+      WHERE fecha_cita = $1 AND estado != 'Cancelada';
+    `;
+    const citaExistente = await db.query(validarChoque, [fecha_cita]);
+
+    if (citaExistente.rows.length > 0) {
+      return res.status(400).json({ error: 'Ya existe una cita programada en este horario. Por favor elija otro.' });
+    }
+
+    // 2. Insertar la nueva cita si el horario está libre
+    const insertCita = `
+      INSERT INTO citas (id_mascota, fecha_cita, motivo_servicio, estado) 
+      VALUES ($1, $2, $3, 'Programada') 
+      RETURNING *;
+    `;
+    const nuevaCitaRes = await db.query(insertCita, [id_mascota, fecha_cita, motivo_servicio || 'Consulta General']);
+
+    res.status(201).json(nuevaCitaRes.rows[0]);
+
+  } catch (err) {
+    console.error('Error al agendar la cita:', err.message);
+    res.status(500).send('Error en el servidor al agendar la cita');
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor del backend corriendo en el puerto ${PORT}`);
 });
