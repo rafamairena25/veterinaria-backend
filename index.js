@@ -146,7 +146,7 @@ app.post('/api/citas', async (req, res) => {
   }
 });
 
-// --- RUTA POST PARA GUARDAR HISTORIAL MÉDICO ---
+// --- RUTA POST PARA GUARDAR HISTORIAL MÉDICO (Con descuento automático de vacunas) ---
 app.post('/api/historial', async (req, res) => {
   const { id_mascota, constantes_vitales, motivo_consulta, diagnostico, tratamiento_recetado } = req.body;
 
@@ -161,16 +161,41 @@ app.post('/api/historial', async (req, res) => {
       RETURNING *;
     `;
 
+    const tratamientoTexto = tratamiento_recetado || 'Sin receta';
+    const observacionesTexto = motivo_consulta || 'Consulta general';
+
     const valores = [
       id_mascota,
       id_veterinario,
       constantes_vitales || 'Sin constantes registradas',
       diagnostico || 'Pendiente de diagnóstico',
-      tratamiento_recetado || 'Sin receta',
-      motivo_consulta || 'Consulta general'
+      tratamientoTexto,
+      observacionesTexto
     ];
 
     const resultado = await db.query(insertHistorial, valores);
+
+    // Lógica para descontar inventario si se aplicó una vacuna del catálogo
+    try {
+      const vacunasCatalogoRes = await db.query('SELECT * FROM vacunas_catalogo');
+      const vacunasBD = vacunasCatalogoRes.rows;
+
+      for (const vac of vacunasBD) {
+        // Si el texto del tratamiento o diagnóstico incluye el nombre de la vacuna, descontamos 1 dosis
+        if (
+          tratamientoTexto.toLowerCase().includes(vac.nombre_vacuna.toLowerCase()) ||
+          diagnostico.toLowerCase().includes(vac.nombre_vacuna.toLowerCase())
+        ) {
+          await db.query(
+            'UPDATE vacunas_catalogo SET stock_o_dosis = GREATEST(0, stock_o_dosis - 1) WHERE id_vacuna = $1',
+            [vac.id_vacuna]
+          );
+        }
+      }
+    } catch (invErr) {
+      console.error('Aviso: No se pudo descontar el stock de vacunas automáticamente:', invErr.message);
+    }
+
     res.status(201).json(resultado.rows[0]);
 
   } catch (err) {
@@ -205,7 +230,7 @@ app.get('/api/historial/:id_mascota', async (req, res) => {
   }
 });
 
-// --- RUTAS NUEVAS PARA CATÁLOGOS (CUN-04) ---
+// --- RUTAS DE CATÁLOGOS (CUN-04) ---
 
 app.get('/api/servicios', async (req, res) => {
   try {
@@ -243,7 +268,8 @@ app.post('/api/vacunas-catalogo', async (req, res) => {
   const { nombre_vacuna, stock_o_dosis } = req.body;
   try {
     const query = 'INSERT INTO vacunas_catalogo (nombre_vacuna, stock_o_dosis) VALUES ($1, $2) RETURNING *;';
-    const result = await db.query(query, [nombre_vacuna, stock_o_dosis || 'Disponible']);
+    const stockNum = stock_o_dosis ? parseInt(stock_o_dosis, 10) : 10;
+    const result = await db.query(query, [nombre_vacuna, isNaN(stockNum) ? 10 : stockNum]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('Error al crear vacuna:', err.message);
