@@ -48,34 +48,39 @@ app.get('/api/expedientes', async (req, res) => {
   }
 });
 
-// --- NUEVA RUTA POST PARA GUARDAR EXPEDIENTES ---
+// --- RUTA POST PARA GUARDAR EXPEDIENTES (Con división inteligente de Nombre y Apellido) ---
 app.post('/api/expedientes', async (req, res) => {
   const { mascota, especie, raza, propietario, telefono } = req.body;
 
   try {
-    // 1. Verificar si el propietario ya existe por nombre o teléfono
+    // 1. Separar inteligentemente el nombre y el apellido ingresados en el formulario
+    const partesNombre = propietario ? propietario.trim().split(' ') : ['Propietario', 'Web'];
+    const nombres = partesNombre[0] || 'Desconocido';
+    const apellidos = partesNombre.slice(1).join(' ') || 'Registrado Web';
+
+    // 2. Verificar si el propietario ya existe por nombre o teléfono
     let propietarioQuery = 'SELECT id_propietario FROM propietarios WHERE nombres = $1 OR telefono = $2';
-    let propietarioRes = await db.query(propietarioQuery, [propietario, telefono || 'N/D']);
+    let propietarioRes = await db.query(propietarioQuery, [nombres, telefono || 'N/D']);
 
     let idPropietario;
 
     if (propietarioRes.rows.length > 0) {
       idPropietario = propietarioRes.rows[0].id_propietario;
     } else {
-      // Si no existe, lo creamos automáticamente cumpliendo con las restricciones de la BD
+      // Si no existe, lo creamos guardando el nombre y apellido separados correctamente
       const insertPropietario = `
         INSERT INTO propietarios (nombres, apellidos, cedula, telefono, direccion) 
         VALUES ($1, $2, $3, $4, $5) RETURNING id_propietario;
       `;
       const cedulaTemporal = 'TEMP-' + Date.now().toString().slice(-8);
-      const resProp = await db.query(insertPropietario, [propietario, 'Registrado Web', cedulaTemporal, telefono || '0000-0000', 'No especificada']);
+      const resProp = await db.query(insertPropietario, [nombres, apellidos, cedulaTemporal, telefono || '0000-0000', 'No especificada']);
       idPropietario = resProp.rows[0].id_propietario;
     }
 
-    // 2. Generar código de expediente único
+    // 3. Generar código de expediente único
     const codigoExpediente = 'EXP-' + Math.floor(1000 + Math.random() * 9000);
 
-    // 3. Insertar la mascota vinculada al propietario
+    // 4. Insertar la mascota vinculada al propietario
     const insertMascota = `
       INSERT INTO mascotas (id_propietario, codigo_expediente, nombre_mascota, especie, raza) 
       VALUES ($1, $2, $3, $4, $5) 
