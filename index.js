@@ -158,12 +158,12 @@ app.post('/api/historial', async (req, res) => {
   const { id_mascota, constantes_vitales, motivo_consulta, diagnostico, tratamiento_recetado } = req.body;
 
   try {
-    // Buscamos un id_veterinario válido en la base de datos (por ejemplo, el primero disponible con rol de médico o usuario)
+    // Buscamos un id_veterinario válido en la base de datos
     const vetQuery = 'SELECT id_usuario FROM usuarios LIMIT 1';
     const vetRes = await db.query(vetQuery);
     
-    // Si no hay usuarios en la BD, usamos un ID por defecto o manejamos el error
-    const id_veterinario = vetRes.rows.length > 0 ? vetRes.rows.rows ? vetRes.rows[0].id_usuario : 1 : 1;
+    // Corrección limpia aplicada aquí:
+    const id_veterinario = vetRes.rows.length > 0 ? vetRes.rows[0].id_usuario : 1;
 
     const insertHistorial = `
       INSERT INTO historial_medico (id_mascota, id_veterinario, constantes_vitales, diagnostico, tratamiento_recetado, observaciones) 
