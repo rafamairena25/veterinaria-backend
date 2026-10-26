@@ -162,7 +162,6 @@ app.post('/api/historial', async (req, res) => {
     const vetQuery = 'SELECT id_usuario FROM usuarios LIMIT 1';
     const vetRes = await db.query(vetQuery);
     
-    // Corrección limpia aplicada aquí:
     const id_veterinario = vetRes.rows.length > 0 ? vetRes.rows[0].id_usuario : 1;
 
     const insertHistorial = `
@@ -186,6 +185,32 @@ app.post('/api/historial', async (req, res) => {
   } catch (err) {
     console.error('Error al guardar el historial médico:', err.message);
     res.status(500).send('Error en el servidor al guardar la orden de atención');
+  }
+});
+
+// --- RUTA GET PARA OBTENER EL HISTORIAL MÉDICO DE UNA MASCOTA ---
+app.get('/api/historial/:id_mascota', async (req, res) => {
+  const { id_mascota } = req.params;
+  try {
+    const query = `
+      SELECT 
+        h.id_historial,
+        h.fecha_consulta,
+        h.constantes_vitales,
+        h.diagnostico,
+        h.tratamiento_recetado,
+        h.observaciones,
+        u.correo AS veterinario
+      FROM historial_medico h
+      JOIN usuarios u ON h.id_veterinario = u.id_usuario
+      WHERE h.id_mascota = $1
+      ORDER BY h.fecha_consulta DESC;
+    `;
+    const result = await db.query(query, [id_mascota]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error al obtener el historial médico:', err.message);
+    res.status(500).send('Error en el servidor al obtener el historial');
   }
 });
 
